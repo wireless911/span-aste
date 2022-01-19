@@ -1,4 +1,7 @@
 ## Span-ASTE-Pytorch
+![Python 3.8](https://img.shields.io/badge/python-3.8-green.svg?style=plastic)
+![PyTorch 1.8.1](https://img.shields.io/badge/PyTorch%20-%23EE4C2C.svg?style=plastic)
+![cuDNN 7.6.5](https://img.shields.io/badge/cudnn-7.6.5-green.svg?style=plastic)
 
 This repository is a pytorch version that implements Ali's ACL 2021 research
 paper [Learning Span-Level Interactions for Aspect Sentiment Triplet Extraction](https://aclanthology.org/2021.acl-long.367/)
