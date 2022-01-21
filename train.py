@@ -81,7 +81,7 @@ model = SpanAsteModel(
 model.to(device)
 
 print("Building Optimizer...", args.optimizer)
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
 
 print("Creating SPAN-ASTE Trainer...")
 trainer = SpanAsteTrainer(model, optimizer, device)
