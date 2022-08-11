@@ -41,15 +41,6 @@ def gold_labels(span_indices, spans, span_labels):
 
 def collate_fn(data):
     """批处理，填充同一batch中句子最大的长度"""
-    x, spans, span_labels, relations, relation_labels, sequence_length = zip(*data)
-    max_len = max(sequence_length)
-    x = torch.stack(
-        [torch.cat([item, torch.zeros(max_len - item.size(0), item.size(1))]) for item in x])
-    sequence_length = torch.stack([item for item in sequence_length])
+    input_ids, attention_mask, token_type_ids, spans, relations, span_labels, relation_labels, seq_len = zip(*data)
 
-    return x.float(), \
-           spans, \
-           span_labels, \
-           relations, \
-           relation_labels, \
-           sequence_length.long()
+    return input_ids, attention_mask, token_type_ids, spans, relations, span_labels, relation_labels, seq_len

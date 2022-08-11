@@ -1,83 +1,86 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
-"""
-=================================================
-@Project ：span-aste
-@IDE     ：PyCharm
-@Author  ：Mr. Wireless
-@Date    ：2022/1/19 9:10 
-@Desc    ：
-==================================================
-"""
-import argparse
+# ====================================
+# @Project ：insights-span-aste
+# @IDE     ：PyCharm
+# @Author  ：Hao,Wireless Zhiheng
+# @Email   ：hpuhzh@outlook.com
+# @Date    ：05/08/2022 9:57 
+# ====================================
+import os
 
+import pandas as pd
 import torch
 from torch.utils.data import DataLoader
-
+from transformers import BertTokenizer
 from models.collate import collate_fn
-from models.tokenizers.tokenizer import BasicTokenizer
-from models.embedding.word2vector import GloveWord2Vector
 from models.model import SpanAsteModel
 from trainer import SpanAsteTrainer
 from utils.dataset import CustomDataset
 from utils.tager import SpanLabel, RelationLabel
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
 print(f"using device:{device}")
-batch_size = 16
-
-SEED = 1024
-torch.manual_seed(SEED)
-torch.cuda.manual_seed(SEED)
-
-parser = argparse.ArgumentParser()
-parser.add_argument("-m", "--model", required=True, type=str, default="output/checkpoint.pkl",
-                    help="the model of span-aste output")
-parser.add_argument("-w", "--glove_word2vector", required=True, type=str, default="vector_cache/42B_w2v.txt",
-                    help="the glove word2vector file path")
-parser.add_argument("-d", "--dataset", required=True, type=str, default="data/ASTE-Data-V2-EMNLP2020/15res/",
-                    help="the dataset for test")
-parser.add_argument("-b", "--batch_size", type=int, default=8, help="number of batch_size")
-parser.add_argument("--lstm_hidden", type=int, default=300, help="hidden size of BiLstm model")
-parser.add_argument("--lstm_layers", type=int, default=1, help="number of BiLstm layers")
-
-args = parser.parse_args()
-
-print("Loading GloVe word2vector...", args.glove_word2vector)
-tokenizer = BasicTokenizer()
-glove_w2v = GloveWord2Vector(args.glove_word2vector)
-
-print("Loading test Dataset...", args.dataset)
-# Load dataset
-test_dataset = CustomDataset(
-    args.dataset + "test_triplets.txt",
-    tokenizer, glove_w2v
-)
-
-print("Construct Dataloader...")
-batch_size = args.batch_size
-test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+# tokenizer
+tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
 print("Building SPAN-ASTE model...")
 # get dimension of target and relation
 target_dim, relation_dim = len(SpanLabel), len(RelationLabel)
-# get the dimension of glove vector
-input_dim = glove_w2v.glove_model.vector_size
 # build span-aste model
 model = SpanAsteModel(
-    input_dim,
+    "bert-base-uncased",
     target_dim,
     relation_dim,
-    lstm_layer=args.lstm_layers,
-    lstm_hidden_dim=args.lstm_hidden
+    device=device
 )
+
+model.load_state_dict(torch.load(os.path.join("checkpoint/model_best", "model.pt"), map_location=torch.device(device)))
 model.to(device)
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+model.eval()
 
-print("Creating SPAN-ASTE Trainer...")
-trainer = SpanAsteTrainer(model, optimizer, device)
+with open("data/15res/dev_triplets.txt", "r", encoding="utf8") as f:
+    data = f.readlines()
+res = []
+for d in data:
+    text, label = d.strip().split("####")
 
-print("Loading model state from output...", args.model)
-model.load_state_dict(torch.load(args.model)["model_state_dict"])
+    tokens = ["[CLS]"] + tokenizer.tokenize(text) + ["[SEP]"]
 
-trainer.test(test_dataloader)
+    input = tokenizer(text, max_length=128, padding=True, truncation=True, return_tensors="pt")
+
+    input_ids = input.input_ids
+    attention_mask = input.attention_mask
+    token_type_ids = input.token_type_ids
+    seq_len = (input_ids != 0).sum().item()
+
+    # forward
+    spans_probability, span_indices, relations_probability, candidate_indices = model(
+        input_ids, attention_mask, token_type_ids, [seq_len])
+
+    relations_probability = relations_probability.squeeze(0)
+    predict = []
+    for idx, can in enumerate(candidate_indices[0]):
+        a, b, c, d = can
+        aspect = tokenizer.convert_tokens_to_string(tokens[a:b])
+        opinion = tokenizer.convert_tokens_to_string(tokens[c:d])
+        sentiment = RelationLabel(relations_probability[idx].argmax(-1).item()).name
+
+        if sentiment != RelationLabel.INVALID.name:
+            predict.append((aspect, opinion, sentiment))
+    print("text:", text)
+    print("predict", predict)
+    labels = []
+    words = text.split(" ")
+    for l in eval(label):
+        a, o, sm = l
+        a = " ".join([words[i] for i in a])
+        o = " ".join([words[i] for i in o])
+        labels.append((a, o, sm))
+    print("label", labels)
+    res.append({"text": text, "predict": predict, "label": labels})
+
+dataframe = pd.DataFrame(res)
+dataframe.to_excel("train.xlsx")
