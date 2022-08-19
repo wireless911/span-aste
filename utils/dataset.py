@@ -10,12 +10,9 @@
 ==================================================
 """
 from typing import Text
-
-import torch
 from torch.utils.data import Dataset
-from utils.tager import SentimentTriple, SentenceTagger
-from models.embedding.word2vector import GloveWord2Vector
-from models.tokenizers.tokenizer import BasicTokenizer
+from utils.processor import InputExample, DataProcessor
+from transformers import BertTokenizer
 
 
 class CustomDataset(Dataset):
@@ -24,40 +21,45 @@ class CustomDataset(Dataset):
     """
 
     def __init__(self,
-                 file: "Text",
-                 tokenizer: "BasicTokenizer",
-                 word2vector: "GloveWord2Vector"
+                 data_type: "Text",
+                 data_dir: "Text",
+                 processor: "DataProcessor",
+                 tokenizer: "BertTokenizer",
+                 max_seq_length: "int"
                  ) -> "None":
+        self.max_seq_length = max_seq_length
         self.tokenizer = tokenizer
-        self.word2vector = word2vector
-
-        with open(file, "r", encoding="utf8") as f:
-            data = f.readlines()
         self.sentence_list = []
-        for d in data:
-            text, label = d.strip().split("####")
-            row = {"text": text, "labels": eval(label)}
-            self.sentence_list.append(row)
+        if data_type == 'train':
+            examples = processor.get_train_examples(data_dir)
+        elif data_type == 'dev':
+            examples = processor.get_dev_examples(data_dir)
+        else:
+            examples = processor.get_test_examples(data_dir)
+        self.examples = examples
 
     def __getitem__(self, idx: "int"):
-        text, labels = self.sentence_list[idx]["text"], self.sentence_list[idx]["labels"]
-        tokens = self.tokenizer.tokenize(text)
+        example = self.examples[idx]  # type:InputExample
+        inputs = self.tokenizer(example.text_a, max_length=self.max_seq_length, padding='max_length', truncation=True)
 
-        x = self.word2vector(tokens)
-        sequence_length = len(tokens)
+        input_ids = inputs.input_ids
+        attention_mask = inputs.attention_mask
+        token_type_ids = inputs.token_type_ids
+        spans = example.spans
+        relations = example.relations
+        span_labels = example.span_labels
+        relation_labels = example.relation_labels
+        seq_len = len([i for i in input_ids if i != 0])
 
-        sentiments_triples = [SentimentTriple.from_sentiment_triple(label) for label in labels]
-        sentence_tager = SentenceTagger(sentiments_triples)
+        if idx < 5:
+            print("*** Example ***")
+            print("guid: %s", example.guid)
+            print("text: %s", example.text_a)
+            print("input_ids: %s", inputs.input_ids)
+            print("attention_mask: %s", inputs.attention_mask)
+            print("token_type_ids: %s", inputs.token_type_ids)
 
-        span_indices, span_labels = sentence_tager.spans_labels
-        relations, relation_labels = sentence_tager.relations
-
-        return x, \
-               span_indices, \
-               span_labels, \
-               relations, \
-               relation_labels, \
-               torch.tensor(sequence_length)
+        return input_ids, attention_mask, token_type_ids, spans, relations, span_labels, relation_labels, seq_len
 
     def __len__(self):
-        return len(self.sentence_list)
+        return len(self.examples)

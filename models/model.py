@@ -9,14 +9,18 @@
 @Desc    ：
 ==================================================
 """
+import numpy as np
 import torch
 from torch import nn, Tensor
 from torch.nn import LSTM, init
 import itertools
+
+from transformers import BertModel
+
 from utils.tager import SpanLabel
 
 
-class SpanRepresentation:
+class SpanRepresentation(nn.Module):
     """
     We define each span representation si,j ∈ S as:
             si,j =   [hi; hj ; f_width(i, j)] if BiLSTM
@@ -27,11 +31,13 @@ class SpanRepresentation:
     The experimental results can be found in the ablation study.
     """
 
-    def __init__(self, span_width_embedding_dim, max_window_size: int = 5):
+    def __init__(self, span_width_embedding_dim, max_window_size: int = 10):
+        super(SpanRepresentation, self).__init__()
         self.max_window_size = max_window_size
         self.span_width_embedding = nn.Embedding(512, span_width_embedding_dim)
 
-    def __call__(self, x: Tensor):
+
+    def forward(self, x: Tensor, batch_max_seq_len):
         """
         [[2, 5], [0, 1], [1, 2], [5, 6], [6, 7], [7, 8], [8, 9], [9, 10], [10, 11], [11, 12]]
         :param x: batch * len * dim
@@ -41,10 +47,12 @@ class SpanRepresentation:
         batch_size, sequence_length, _ = x.size()
         device = x.device
 
-        len_arrange = torch.arange(0, sequence_length, device=device)
+        len_arrange = torch.arange(0, batch_max_seq_len, device=device)
         span_indices = []
 
-        for window in range(1, self.max_window_size + 1):
+        max_window = min(batch_max_seq_len, self.max_window_size)
+
+        for window in range(1, max_window + 1):
             if window == 1:
                 indics = [(x.item(), x.item()) for x in len_arrange]
             else:
@@ -81,7 +89,7 @@ class PrunedTargetOpinion:
         return target_indices, opinion_indices
 
 
-class TargetOpinionPairRepresentation:
+class TargetOpinionPairRepresentation(nn.Module):
     """
     Target Opinion Pair Representation We obtain the target-opinion pair representation by coupling each target candidate representation
     St_a,b ∈ St with each opinion candidate representation So_a,b ∈ So:
@@ -91,12 +99,14 @@ class TargetOpinionPairRepresentation:
     """
 
     def __init__(self, distance_embeddings_dim):
+        super(TargetOpinionPairRepresentation, self).__init__()
         self.distance_embeddings = nn.Embedding(512, distance_embeddings_dim)
+
 
     def min_distance(self, a, b, c, d):
         return torch.LongTensor([min(abs(b - c), abs(a - d))])
 
-    def __call__(self, spans, span_indices, target_indices, opinion_indices):
+    def forward(self, spans, span_indices, target_indices, opinion_indices):
         """
 
         :param spans:
@@ -148,16 +158,14 @@ class SpanAsteModel(nn.Module):
 
     def __init__(
             self,
-            input_dim: "int",
+            pretrain_model,
             target_dim: "int",
             relation_dim: "int",
-            lstm_layer: "int" = 1,
-            lstm_hidden_dim: "int" = 300,
-            lstm_bidirectional: "bool" = True,
             ffnn_hidden_dim: "int" = 150,
             span_width_embedding_dim: "int" = 20,
             span_pruned_threshold: "int" = 0.5,
             pair_distance_embeddings_dim: "int" = 128,
+            device="cpu"
     ) -> None:
         """
         :param input_dim: The number of expected features in the input `x`.
@@ -183,11 +191,14 @@ class SpanAsteModel(nn.Module):
         """
         super(SpanAsteModel, self).__init__()
         self.span_pruned_threshold = span_pruned_threshold
-        num_directions = 2 if lstm_bidirectional else 1
-        self.lstm_encoding = LSTM(input_dim, num_layers=lstm_layer, hidden_size=lstm_hidden_dim, batch_first=True,
-                                  bidirectional=lstm_bidirectional, dropout=0.5)
+        self.pretrain_model = pretrain_model
+        self.device = device
+
+        self.bert = BertModel.from_pretrained(pretrain_model)
+        encoding_dim = self.bert.config.hidden_size
+
         self.span_representation = SpanRepresentation(span_width_embedding_dim)
-        span_dim = lstm_hidden_dim * num_directions * 2 + span_width_embedding_dim
+        span_dim = encoding_dim * 2 + span_width_embedding_dim
         self.span_ffnn = torch.nn.Sequential(
             nn.Linear(span_dim, ffnn_hidden_dim, bias=True),
             nn.ReLU(),
@@ -221,7 +232,8 @@ class SpanAsteModel(nn.Module):
             if "weight" in name:
                 init.xavier_normal_(param)
 
-    def forward(self, x: torch.Tensor):
+
+    def forward(self, input_ids, attention_mask, token_type_ids, seq_len):
         """
         :param x: B * L * D
         :param adj: B * L * L
@@ -229,11 +241,15 @@ class SpanAsteModel(nn.Module):
         """
         # y_t (B,L,T)
         # h_t (B,L,num_directions*H)
-        batch_size, sequence_len, _ = x.size()
-        output, (hn, cn) = self.lstm_encoding(x)
-        spans, span_indices = self.span_representation(output)
+
+        batch_size, sequence_len = input_ids.size()
+        batch_max_seq_len = max(seq_len)
+
+        bert_output = self.bert(input_ids, attention_mask, token_type_ids)
+        x = bert_output.last_hidden_state
+        spans, span_indices = self.span_representation(x, batch_max_seq_len)
         spans_probability = self.span_ffnn(spans)
-        nz = int(sequence_len * self.span_pruned_threshold)
+        nz = int(batch_max_seq_len * self.span_pruned_threshold)
 
         target_indices, opinion_indices = self.pruned_target_opinion(spans_probability, nz)
 

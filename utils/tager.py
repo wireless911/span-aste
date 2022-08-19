@@ -35,25 +35,13 @@ class SentimentTriple(BaseModel):
     @classmethod
     def from_sentiment_triple(cls, labels: Tuple[List, List, Text]):
         """read from sentiment triple"""
+
+        relation = {"认可": "POS", "不认可": "NEG", "中性": "NEU"}
         assert len(labels) == 3
-        # 处理single词
-        new_labels = []
-        for label in labels:
-            if isinstance(label, str):
-                new_labels.append(label)
-            else:
-                # 处理single词
-                if len(label) == 1:
-                    new_labels.append(label * 2)
-                # 处理多词
-                elif len(label) > 2:
-                    new_labels.append([label[0], label[1]])
-                else:
-                    new_labels.append(label)
         return cls(
-            aspect=new_labels[0],
-            opinion=new_labels[1],
-            sentiment=new_labels[2],
+            aspect=labels[0],
+            opinion=labels[1],
+            sentiment=relation[labels[2]] if labels[2] in relation.keys() else labels[2]
         )
 
 
@@ -62,12 +50,14 @@ class SentenceTagger:
 
     def __init__(self, sentiments: List[SentimentTriple]):
         self.sentiments = sentiments
-        self.sentiments_mapping = {"POS": RelationLabel.POS.value,
-                                   "NEG": RelationLabel.NEG.value,
-                                   "NEU": RelationLabel.NEU.value}
+        self.sentiments_mapping = {
+            "POS": RelationLabel.POS.value,
+            "NEG": RelationLabel.NEG.value,
+            "NEU": RelationLabel.NEU.value
+        }
 
     @property
-    def spans_labels(self):
+    def spans(self):
         spans, span_labels = [], []
         for triplets in self.sentiments:
             spans.append(tuple(triplets.aspect))

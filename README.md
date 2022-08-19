@@ -7,35 +7,39 @@ This repository is a pytorch version that implements Ali's ACL 2021 research
 paper [Learning Span-Level Interactions for Aspect Sentiment Triplet Extraction](https://aclanthology.org/2021.acl-long.367/)
 .
 
-- 🤗 The [original repository](https://github.com/chiayewken/Span-ASTE.git) of the paper is based on
+-  The [original repository](https://github.com/chiayewken/Span-ASTE.git) of the paper is based on
   the [allennlp](https://docs.allennlp.org/main/) implementation
-- 🤗 Thanks to Ali's dataset [SemEval-Triplet-data](https://github.com/xuuuluuu/SemEval-Triplet-data.git) that was open
+-  Thanks to Ali's dataset [SemEval-Triplet-data](https://github.com/xuuuluuu/SemEval-Triplet-data.git) that was open
   sourced, so that we can use it for research
 
 ### Usage
 
-1. 🍉 Download dataset from here [SemEval-Triplet-data](https://github.com/xuuuluuu/SemEval-Triplet-data.git),
-  ASTE-Data-V2-EMNLP2020 is used in my repository
-2. 🥭 Download [GloVe](https://github.com/stanfordnlp/GloVe.git) pre-trained word vectors,
-3. 🍑 Convert `glove_input_file` in GloVe format to word2vec format and write it to `word2vec_output_file
-```shell
-from gensim.scripts.glove2word2vec import glove2word2vec
+1. Download dataset from here [SemEval-Triplet-data](https://github.com/xuuuluuu/SemEval-Triplet-data.git),
 
-glove2word2vec("path/to/dir/glove_input_file", "path/to/dir/word2vec_output_file")
-
-```
-4. 🍓 train the span-aste model
+2. 训练模型
 ```shell
-python train.py --glove_word2vector vector_cache/w2v.txt \
-          --dataset data/ASTE-Data-V2-EMNLP2020/15res/ \
-          --output_path output/
+python train.py \
+  --bert_model bert-base-uncased \
+  --batch_size 1 \
+  --learning_rate 5e-5 \
+  --weight_decay 1e-2 \
+  --warmup_proportion 0.1 \
+  --train_path data/15res \
+  --dev_path data/15res \
+  --save_dir ./checkpoint \
+  --max_seq_len 512 \
+  --num_epochs 10 \
+  --logging_steps 30 \
+  --valid_steps 50
 ```
-5. 🍇 test the span-aste model
+5. 模型评估
 ```shell
-python test.py --model_path  \
-          --glove_word2vector corpus/w2v.txt \
-          --dataset data/ASTE-Data-V2-EMNLP2020/15res/\
-          -model `path/to/model/model.pkl`
+python evaluate.py \
+  --bert_model bert-base-uncased  \
+  --model_path checkpoint/model_best \
+  --batch_size 1 \ 
+  --max_seq_len 512
+  
 
 ```
 
