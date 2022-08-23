@@ -10,6 +10,7 @@
 ==================================================
 """
 import numpy as np
+import pandas as pd
 import torch
 from torch import nn, Tensor
 from torch.nn import LSTM, init
@@ -34,8 +35,12 @@ class SpanRepresentation(nn.Module):
     def __init__(self, span_width_embedding_dim, max_window_size: int = 10):
         super(SpanRepresentation, self).__init__()
         self.max_window_size = max_window_size
-        self.span_width_embedding = nn.Embedding(512, span_width_embedding_dim)
+        self.bucket_bins = [0, 1, 2, 3, 4, 5, 7, 8, 15, 16, 31, 32, 63, 64]
+        self.span_width_embedding = nn.Embedding(len(self.bucket_bins), span_width_embedding_dim)
 
+    def bucket_embedding(self, width, device):
+        em = [ix for ix, v in enumerate(self.bucket_bins) if width >= v][0]
+        return self.span_width_embedding(torch.LongTensor([em]).to(device))
 
     def forward(self, x: Tensor, batch_max_seq_len):
         """
@@ -62,7 +67,7 @@ class SpanRepresentation(nn.Module):
 
         spans = [torch.cat(
             (x[:, s[0], :], x[:, s[1], :],
-             self.span_width_embedding(torch.LongTensor([abs(s[1] - s[0] + 1)])).repeat(
+             self.bucket_embedding(abs(s[1] - s[0] + 1), device).repeat(
                  (batch_size, 1)).to(device)),
             dim=1) for s in span_indices]
 
@@ -100,11 +105,15 @@ class TargetOpinionPairRepresentation(nn.Module):
 
     def __init__(self, distance_embeddings_dim):
         super(TargetOpinionPairRepresentation, self).__init__()
-        self.distance_embeddings = nn.Embedding(512, distance_embeddings_dim)
-
+        self.bucket_bins = [0, 1, 2, 3, 4, 5, 7, 8, 15, 16, 31, 32, 63, 64]
+        self.distance_embeddings = nn.Embedding(len(self.bucket_bins), distance_embeddings_dim)
 
     def min_distance(self, a, b, c, d):
-        return torch.LongTensor([min(abs(b - c), abs(a - d))])
+        return min(abs(b - c), abs(a - d))
+
+    def bucket_embedding(self, width, device):
+        em = [ix for ix, v in enumerate(self.bucket_bins) if width >= v][0]
+        return self.distance_embeddings(torch.LongTensor([em]).to(device))
 
     def forward(self, spans, span_indices, target_indices, opinion_indices):
         """
@@ -140,8 +149,8 @@ class TargetOpinionPairRepresentation(nn.Module):
         for batch in range(batch_size):
             relations = [
                 torch.cat((spans[batch, c[0], :], spans[batch, c[1], :],
-                           self.distance_embeddings(
-                               self.min_distance(*span_indices[c[0]], *span_indices[c[1]])).to(device).squeeze(0))
+                           self.bucket_embedding(
+                               self.min_distance(*span_indices[c[0]], *span_indices[c[1]]),device).squeeze(0))
                           , dim=0) for c in
                 relation_indices[batch]]
             candidate_pool.append(torch.stack(relations))
@@ -231,7 +240,6 @@ class SpanAsteModel(nn.Module):
         for name, param in self.pairs_ffnn.named_parameters():
             if "weight" in name:
                 init.xavier_normal_(param)
-
 
     def forward(self, input_ids, attention_mask, token_type_ids, seq_len):
         """

@@ -9,7 +9,10 @@
 # ====================================
 import argparse
 import os
+import random
 from functools import partial
+
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from transformers import BertTokenizer
@@ -19,7 +22,12 @@ from models.model import SpanAsteModel
 from utils.dataset import CustomDataset
 from utils.processor import Res15DataProcessor
 from utils.tager import SpanLabel, RelationLabel
-
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
 
 def evaluate(model, metric, data_loader, device):
     """
@@ -31,31 +39,31 @@ def evaluate(model, metric, data_loader, device):
     """
     model.eval()
     metric.reset()
+    with torch.no_grad():
+        for batch_ix, batch in enumerate(data_loader):
+            input_ids, attention_mask, token_type_ids, spans, relations, span_labels, relation_labels, seq_len = batch
+            input_ids = torch.tensor(input_ids, device=device)
+            attention_mask = torch.tensor(attention_mask, device=device)
+            token_type_ids = torch.tensor(token_type_ids, device=device)
 
-    for batch_ix, batch in enumerate(data_loader):
-        input_ids, attention_mask, token_type_ids, spans, relations, span_labels, relation_labels, seq_len = batch
-        input_ids = torch.tensor(input_ids, device=device)
-        attention_mask = torch.tensor(attention_mask, device=device)
-        token_type_ids = torch.tensor(token_type_ids, device=device)
+            # forward
+            spans_probability, span_indices, relations_probability, candidate_indices = model(
+                input_ids, attention_mask, token_type_ids, seq_len)
 
-        # forward
-        spans_probability, span_indices, relations_probability, candidate_indices = model(
-            input_ids, attention_mask, token_type_ids, seq_len)
+            gold_span_indices, gold_span_labels = gold_labels(span_indices, spans, span_labels)
+            gold_relation_indices, gold_relation_labels = gold_labels(candidate_indices, relations, relation_labels)
 
-        gold_span_indices, gold_span_labels = gold_labels(span_indices, spans, span_labels)
-        gold_relation_indices, gold_relation_labels = gold_labels(candidate_indices, relations, relation_labels)
+            # num_correct, num_infer, num_label = metric.compute(spans_probability.cpu(), torch.tensor(gold_span_labels))
+            num_correct, num_infer, num_label = metric.compute(relations_probability.cpu(),
+                                                               torch.tensor(gold_relation_labels))
 
-        # num_correct, num_infer, num_label = metric.compute(spans_probability.cpu(), torch.tensor(gold_span_labels))
-        num_correct, num_infer, num_label = metric.compute(relations_probability.cpu(),
-                                                           torch.tensor(gold_relation_labels))
-
-        metric.update(num_correct, num_infer, num_label)
+            metric.update(num_correct, num_infer, num_label)
     precision, recall, f1 = metric.accumulate()
     model.train()
     return precision, recall, f1
 
-
 def do_eval():
+    set_seed(1024)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -102,7 +110,7 @@ if __name__ == "__main__":
     parser.add_argument("--bert_model", type=str, default=None, help="The name of bert.")
     parser.add_argument("--model_path", type=str, default=None, help="The path of saved model that you want to load.")
     parser.add_argument("--test_path", type=str, default=None, help="The path of test set.")
-    parser.add_argument("--batch_size", type=int, default=2, help="Batch size per GPU/CPU for training.")
+    parser.add_argument("--batch_size", type=int, default=1, help="Batch size per GPU/CPU for training.")
     parser.add_argument("--max_seq_len", type=int, default=512,
                         help="The maximum total input sequence length after tokenization.")
     args = parser.parse_args()
