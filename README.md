@@ -35,6 +35,7 @@ python train.py \
 5. 模型评估
 ```shell
 python evaluate.py \
+  --test_path  data/15res \
   --bert_model bert-base-uncased  \
   --model_path checkpoint/model_best \
   --batch_size 1 \ 

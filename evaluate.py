@@ -22,12 +22,15 @@ from models.model import SpanAsteModel
 from utils.dataset import CustomDataset
 from utils.processor import Res15DataProcessor
 from utils.tager import SpanLabel, RelationLabel
+
+
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
+
 
 def evaluate(model, metric, data_loader, device):
     """
@@ -53,7 +56,6 @@ def evaluate(model, metric, data_loader, device):
             gold_span_indices, gold_span_labels = gold_labels(span_indices, spans, span_labels)
             gold_relation_indices, gold_relation_labels = gold_labels(candidate_indices, relations, relation_labels)
 
-            # num_correct, num_infer, num_label = metric.compute(spans_probability.cpu(), torch.tensor(gold_span_labels))
             num_correct, num_infer, num_label = metric.compute(relations_probability.cpu(),
                                                                torch.tensor(gold_relation_labels))
 

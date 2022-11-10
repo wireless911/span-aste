@@ -39,7 +39,7 @@ class SpanRepresentation(nn.Module):
         self.span_width_embedding = nn.Embedding(len(self.bucket_bins), span_width_embedding_dim)
 
     def bucket_embedding(self, width, device):
-        em = [ix for ix, v in enumerate(self.bucket_bins) if width >= v][0]
+        em = [ix for ix, v in enumerate(self.bucket_bins) if width >= v][-1]
         return self.span_width_embedding(torch.LongTensor([em]).to(device))
 
     def forward(self, x: Tensor, batch_max_seq_len):
@@ -112,7 +112,7 @@ class TargetOpinionPairRepresentation(nn.Module):
         return min(abs(b - c), abs(a - d))
 
     def bucket_embedding(self, width, device):
-        em = [ix for ix, v in enumerate(self.bucket_bins) if width >= v][0]
+        em = [ix for ix, v in enumerate(self.bucket_bins) if width >= v][-1]
         return self.distance_embeddings(torch.LongTensor([em]).to(device))
 
     def forward(self, spans, span_indices, target_indices, opinion_indices):

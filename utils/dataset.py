@@ -51,14 +51,6 @@ class CustomDataset(Dataset):
         relation_labels = example.relation_labels
         seq_len = len([i for i in input_ids if i != 0])
 
-        if idx < 5:
-            print("*** Example ***")
-            print("guid: %s", example.guid)
-            print("text: %s", example.text_a)
-            print("input_ids: %s", inputs.input_ids)
-            print("attention_mask: %s", inputs.attention_mask)
-            print("token_type_ids: %s", inputs.token_type_ids)
-
         return input_ids, attention_mask, token_type_ids, spans, relations, span_labels, relation_labels, seq_len
 
     def __len__(self):
