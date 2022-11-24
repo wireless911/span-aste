@@ -32,9 +32,9 @@ class SpanRepresentation(nn.Module):
     The experimental results can be found in the ablation study.
     """
 
-    def __init__(self, span_width_embedding_dim, max_window_size: int = 10):
+    def __init__(self, span_width_embedding_dim, span_maximum_length):
         super(SpanRepresentation, self).__init__()
-        self.max_window_size = max_window_size
+        self.span_maximum_length = span_maximum_length
         self.bucket_bins = [0, 1, 2, 3, 4, 5, 7, 8, 15, 16, 31, 32, 63, 64]
         self.span_width_embedding = nn.Embedding(len(self.bucket_bins), span_width_embedding_dim)
 
@@ -55,7 +55,7 @@ class SpanRepresentation(nn.Module):
         len_arrange = torch.arange(0, batch_max_seq_len, device=device)
         span_indices = []
 
-        max_window = min(batch_max_seq_len, self.max_window_size)
+        max_window = min(batch_max_seq_len, self.span_maximum_length)
 
         for window in range(1, max_window + 1):
             if window == 1:
@@ -150,7 +150,7 @@ class TargetOpinionPairRepresentation(nn.Module):
             relations = [
                 torch.cat((spans[batch, c[0], :], spans[batch, c[1], :],
                            self.bucket_embedding(
-                               self.min_distance(*span_indices[c[0]], *span_indices[c[1]]),device).squeeze(0))
+                               self.min_distance(*span_indices[c[0]], *span_indices[c[1]]), device).squeeze(0))
                           , dim=0) for c in
                 relation_indices[batch]]
             candidate_pool.append(torch.stack(relations))
@@ -172,6 +172,7 @@ class SpanAsteModel(nn.Module):
             relation_dim: "int",
             ffnn_hidden_dim: "int" = 150,
             span_width_embedding_dim: "int" = 20,
+            span_maximum_length: "int" = 8,
             span_pruned_threshold: "int" = 0.5,
             pair_distance_embeddings_dim: "int" = 128,
             device="cpu"
@@ -193,6 +194,8 @@ class SpanAsteModel(nn.Module):
         :type int (default:150)
         :param span_width_embedding_dim: The number of features in the span width embedding layer.
         :type int (default:20)
+        :param span_maximum_length: The maximum span length.
+        :type int (default:8)
         :param span_pruned_threshold: threshold hyper-parameter for span pruned.
         :type int (default:0.5)
         :param pair_distance_embeddings_dim: The number of features in the target-opinion pair distance embedding layer.
@@ -206,7 +209,7 @@ class SpanAsteModel(nn.Module):
         self.bert = BertModel.from_pretrained(pretrain_model)
         encoding_dim = self.bert.config.hidden_size
 
-        self.span_representation = SpanRepresentation(span_width_embedding_dim)
+        self.span_representation = SpanRepresentation(span_width_embedding_dim, span_maximum_length)
         span_dim = encoding_dim * 2 + span_width_embedding_dim
         self.span_ffnn = torch.nn.Sequential(
             nn.Linear(span_dim, ffnn_hidden_dim, bias=True),
