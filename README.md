@@ -12,6 +12,10 @@ paper [Learning Span-Level Interactions for Aspect Sentiment Triplet Extraction]
 -  Thanks to Ali's dataset [SemEval-Triplet-data](https://github.com/xuuuluuu/SemEval-Triplet-data.git) that was open
   sourced, so that we can use it for research
 
+
+![image](https://github.com/wireless911/span-aste/assets/40172030/4116fd42-2457-407a-8613-c76921a72eb0)
+
+
 ### Usage
 
 1. Download dataset from here [SemEval-Triplet-data](https://github.com/xuuuluuu/SemEval-Triplet-data.git),
